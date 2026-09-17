@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Claude Code hook that nudges Switchboard to refresh.
+#
+# Add it to ~/.claude/settings.json for the events you care about, e.g.
+#
+#   "hooks": {
+#     "Stop":         [{"matcher": "", "hooks": [{"type": "command", "command": "/path/to/switchboard-hook"}]}],
+#     "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "/path/to/switchboard-hook"}]}]
+#   }
+#
+# The hook JSON arrives on stdin; only session_id is used, and only as a
+# hint (jq is optional: without it Emacs refreshes without the hint).
+# Switchboard re-fetches `claude agents --json --all` itself, so this
+# script carries no state and can never be wrong about it.  Needs bash.
+#
+# It must never slow down or fail the Claude session:
+#   - emacsclient runs detached in the background, so a frozen or absent
+#     Emacs costs nothing here;
+#   - every error is ignored and the exit status is always 0.
+#
+# Environment:
+#   SWITCHBOARD_EMACSCLIENT  emacsclient binary (default: emacsclient)
+#   SWITCHBOARD_SOCKET       server socket name, passed as --socket-name
+
+# At most 64 KiB of stdin is buffered: the hook JSON is small, and an
+# oversized input is cut off instead of being held in memory.
+input=""
+[ ! -t 0 ] && input=$(head -c 65536 2>/dev/null || true)
+
+# session_id is only a hint. It is dropped unless it is plain
+# [A-Za-z0-9._:-], so nothing from stdin can reach the Lisp form.
+sid=""
+if command -v jq >/dev/null 2>&1 && [ -n "$input" ]; then
+  sid=$(printf '%s' "$input" |
+    jq -r 'if (.session_id | type) == "string" then .session_id else empty end' 2>/dev/null)
+  case "$sid" in
+    *[!A-Za-z0-9._:-]*) sid="" ;;
+  esac
+fi
+
+client="${SWITCHBOARD_EMACSCLIENT:-emacsclient}"
+command -v "$client" >/dev/null 2>&1 || exit 0
+
+args=()
+[ -n "${SWITCHBOARD_SOCKET:-}" ] && args+=("--socket-name=$SWITCHBOARD_SOCKET")
+
+if [ -n "$sid" ]; then
+  form="(switchboard-refresh \"$sid\")"
+else
+  form="(switchboard-refresh)"
+fi
+
+("$client" "${args[@]}" --eval "$form" >/dev/null 2>&1 &)
+exit 0

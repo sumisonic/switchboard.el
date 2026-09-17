@@ -1,0 +1,69 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        emacs_version:
+          - "29.1"
+          - "release-snapshot"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@34c6ded44899fd1bf74d2889558befd1750e61a7 # master, 2026-09
+        with:
+          version: ${{ matrix.emacs_version }}
+
+      - name: Byte-compile without optional packages (must be warning-free)
+        run: |
+          emacs -Q --batch -L . \
+            --eval '(setq byte-compile-error-on-warn t)' \
+            -f batch-byte-compile switchboard.el switchboard-consult.el
+
+      - name: checkdoc (must be clean)
+        run: emacs -Q --batch -l test/checkdoc-batch.el
+
+      - name: package-lint
+        run: |
+          emacs -Q --batch \
+            --eval "(progn (require 'package) (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) (package-initialize) (package-refresh-contents) (package-install 'package-lint))" \
+            -l package-lint -f package-lint-batch-and-exit switchboard.el
+          emacs -Q --batch \
+            --eval "(progn (require 'package) (package-initialize))" \
+            -l package-lint --eval '(setq package-lint-main-file "switchboard.el")' \
+            -f package-lint-batch-and-exit switchboard-consult.el
+
+      - name: Run ERT (without optional packages)
+        run: |
+          emacs -Q --batch -L . \
+            -l switchboard.el -l test/switchboard-test.el \
+            -f ert-run-tests-batch-and-exit
+
+      - name: Install optional packages (eat, consult, embark)
+        run: |
+          emacs -Q --batch \
+            --eval "(progn (require 'package) (push '(\"nongnu\" . \"https://elpa.nongnu.org/nongnu/\") package-archives) (package-initialize) (package-refresh-contents) (dolist (p '(eat consult embark)) (package-install p)))"
+
+      - name: Byte-compile with optional packages (must be warning-free)
+        run: |
+          emacs -Q --batch \
+            --eval "(progn (require 'package) (package-initialize))" \
+            --eval '(setq byte-compile-error-on-warn t)' \
+            -L . -f batch-byte-compile switchboard.el switchboard-consult.el
+
+      - name: Run ERT (with eat, consult and embark)
+        run: |
+          emacs -Q --batch \
+            --eval "(progn (require 'package) (package-initialize))" \
+            -L . -l switchboard.el -l test/switchboard-test.el \
+            -f ert-run-tests-batch-and-exit

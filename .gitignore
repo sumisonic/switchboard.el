@@ -1,0 +1,8 @@
+# Compiled
+*.elc
+
+# worktree
+.worktrees/
+
+# Private design notes (not published)
+notes/
