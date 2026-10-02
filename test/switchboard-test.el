@@ -1371,6 +1371,180 @@ agent, TRAILING is appended verbatim (for a half-written last line).
         (should (equal (plist-get (cadr seen) :prompt) "Session: "))
         (should (equal (mapcar #'switchboard--candidate-id (nth 2 seen)) '("aaaaaaaa")))))))
 
+;;;; Menu
+
+(ert-deftest switchboard-menu-is-bound-to-question-mark ()
+  "`?' in the list opens the menu."
+  (should (eq (keymap-lookup switchboard-mode-map "?") #'switchboard-menu)))
+
+(ert-deftest switchboard-loading-does-not-load-transient ()
+  "Loading switchboard.el leaves transient as it was.
+Checked in a fresh Emacs, since other tests here open the menu.  An
+Emacs that has transient loaded from the start passes trivially."
+  (let ((emacs (expand-file-name invocation-name invocation-directory))
+        (directory (file-name-directory (locate-library "switchboard"))))
+    (with-temp-buffer
+      (should (eql 0 (call-process
+                      emacs nil (list t nil) nil
+                      "-Q" "--batch" "-L" directory "--eval"
+                      "(let ((before (featurep 'transient)))
+                         (require 'switchboard)
+                         (princ (eq before (featurep 'transient))))")))
+      (should (equal (buffer-string) "t")))))
+
+(ert-deftest switchboard-menu-outside-the-list-is-a-user-error ()
+  "The menu refuses to open outside the list buffer."
+  (with-temp-buffer
+    (should-error (call-interactively #'switchboard-menu) :type 'user-error)))
+
+(ert-deftest switchboard-menu-heading-names-the-session-at-point ()
+  "The menu takes the session on the current line for its heading."
+  (require 'switchboard-menu)
+  (switchboard-test--with-clean-state
+    (switchboard--apply-snapshot
+     (list (switchboard-test--agent "abc12345" 'blocked :name "fix login")))
+    (let ((buffer (get-buffer-create switchboard-buffer-name))
+          (setups nil))
+      (unwind-protect
+          (with-current-buffer buffer
+            (switchboard-mode)
+            (tabulated-list-print)
+            (cl-letf (((symbol-function 'transient-setup)
+                       (lambda (&rest args) (push args setups))))
+              (goto-char (point-min))
+              (call-interactively #'switchboard-menu)
+              (should (equal setups '((switchboard-menu))))
+              (let ((heading (switchboard--menu-heading)))
+                (should (equal (substring-no-properties heading) "fix login  blocked"))
+                (should (eq (get-text-property (1- (length heading)) 'face heading)
+                            'switchboard-blocked)))
+              ;; The end of the buffer is a line without a session.
+              (goto-char (point-max))
+              (call-interactively #'switchboard-menu)
+              (should (equal (switchboard--menu-heading) "No session on this line"))))
+        (kill-buffer buffer)
+        (setq switchboard--menu-agent nil)))))
+
+(defmacro switchboard-test--with-menu-on-first-line (agents &rest body)
+  "Run BODY in a list of AGENTS after opening the menu on its first line.
+`transient-setup' is stubbed, so nothing is displayed."
+  (declare (indent 1))
+  `(progn
+     (require 'switchboard-menu)
+     (switchboard-test--with-clean-state
+       (switchboard--apply-snapshot ,agents)
+       (let ((buffer (get-buffer-create switchboard-buffer-name)))
+         (unwind-protect
+             (with-current-buffer buffer
+               (switchboard-mode)
+               (tabulated-list-print)
+               (goto-char (point-min))
+               (cl-letf (((symbol-function 'transient-setup) #'ignore))
+                 (call-interactively #'switchboard-menu))
+               ,@body)
+           (kill-buffer buffer)
+           (setq switchboard--menu-agent nil))))))
+
+(defconst switchboard-test--menu-keys
+  '(("RET" switchboard-attach switchboard--menu-attach)
+    ("l" switchboard-transcript switchboard--menu-transcript)
+    ("a" switchboard-acknowledge switchboard--menu-acknowledge)
+    ("s" switchboard-stop switchboard--menu-stop)
+    ("r" switchboard-respawn switchboard--menu-respawn)
+    ("k" switchboard-remove switchboard--menu-remove)
+    ("g" switchboard-refresh switchboard-refresh)
+    ("A" switchboard-toggle-show-all switchboard-toggle-show-all)
+    ("d" switchboard-dispatch switchboard-dispatch))
+  "Each key of the menu with the list's command and the menu's for it.")
+
+(ert-deftest switchboard-menu-keys-match-the-list ()
+  "Each key of the menu stands for the command the same key runs in the list.
+U, which acknowledges every session, is the menu's own."
+  (require 'switchboard-menu)
+  (pcase-dolist (`(,key ,list-command ,menu-command) switchboard-test--menu-keys)
+    (should (eq (keymap-lookup switchboard-mode-map key) list-command))
+    (should (equal (transient-get-suffix 'switchboard-menu key)
+                   (transient-get-suffix 'switchboard-menu menu-command))))
+  (should (equal (transient-get-suffix 'switchboard-menu "U")
+                 (transient-get-suffix 'switchboard-menu
+                                       'switchboard--menu-acknowledge-all)))
+  (should-not (keymap-lookup switchboard-mode-map "U")))
+
+(ert-deftest switchboard-menu-session-commands-run-the-list-commands ()
+  "A session command of the menu runs the list's command on the line."
+  (switchboard-test--with-menu-on-first-line
+      (list (switchboard-test--agent "aaaaaaaa" 'working :name "A"))
+    (pcase-dolist (`(,_key ,list-command ,menu-command) switchboard-test--menu-keys)
+      (unless (eq list-command menu-command)
+        (let ((ran nil))
+          (cl-letf (((symbol-function list-command)
+                     (lambda (&rest _) (interactive) (setq ran (tabulated-list-get-id)))))
+            (call-interactively menu-command))
+          (should (equal ran "aaaaaaaa")))))))
+
+(ert-deftest switchboard-menu-acknowledge-with-prefix-acknowledges-all ()
+  "As in the list, `a' with a prefix argument acknowledges every session.
+That holds on a line without a session too."
+  (switchboard-test--with-menu-on-first-line nil
+    (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'working)
+                                       (switchboard-test--agent "b" 'working)))
+    (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'done)
+                                       (switchboard-test--agent "b" 'failed)))
+    (should-error (call-interactively #'switchboard--menu-acknowledge) :type 'user-error)
+    (should (equal (switchboard--lamp-counts) '(0 1 1)))
+    (let ((current-prefix-arg '(4)))
+      (call-interactively #'switchboard--menu-acknowledge))
+    (should (equal (switchboard--lamp-counts) '(0 0 0)))))
+
+(ert-deftest switchboard-menu-refuses-a-session-that-left-the-list ()
+  "Once a refresh drops the menu's session, its session commands refuse.
+Point has then moved to another session, which the heading does not
+name.  While the session is listed, point follows it."
+  (let ((now (floor (* 1000 (float-time))))
+        (runs nil))
+    (switchboard-test--with-menu-on-first-line
+        (list (switchboard-test--agent "aaaaaaaa" 'working :name "A" :started-at now)
+              (switchboard-test--agent "bbbbbbbb" 'working :name "B"
+                                       :started-at (- now 1000)))
+      (cl-letf (((symbol-function 'switchboard--run-claude)
+                 (lambda (args _on-done) (push args runs))))
+        ;; A is still listed, now below B: the command follows it.
+        (switchboard--apply-snapshot
+         (list (switchboard-test--agent "bbbbbbbb" 'blocked :name "B")
+               (switchboard-test--agent "aaaaaaaa" 'working :name "A" :started-at now)))
+        (call-interactively #'switchboard--menu-stop)
+        (should (equal runs '(("stop" "aaaaaaaa"))))
+        ;; A left the list and point moved to B: the menu refuses.
+        (switchboard--apply-snapshot
+         (list (switchboard-test--agent "bbbbbbbb" 'blocked :name "B")))
+        (should (equal (tabulated-list-get-id) "bbbbbbbb"))
+        (should-error (call-interactively #'switchboard--menu-stop) :type 'user-error)
+        (should (equal runs '(("stop" "aaaaaaaa"))))))))
+
+(ert-deftest switchboard-menu-opened-without-a-session-refuses ()
+  "A menu opened on a line without a session stays without one.
+A session that a refresh puts on that line is not acted on."
+  (let ((runs nil))
+    (switchboard-test--with-menu-on-first-line nil
+      (cl-letf (((symbol-function 'switchboard--run-claude)
+                 (lambda (args _on-done) (push args runs))))
+        (switchboard--apply-snapshot (list (switchboard-test--agent "aaaaaaaa" 'working)))
+        (should (equal (tabulated-list-get-id) "aaaaaaaa"))
+        (should-error (call-interactively #'switchboard--menu-stop) :type 'user-error)
+        (should (null runs))))))
+
+(ert-deftest switchboard-menu-acknowledge-all ()
+  "The menu's U acknowledges every finished or failed session."
+  (require 'switchboard-menu)
+  (switchboard-test--with-clean-state
+    (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'working)
+                                       (switchboard-test--agent "b" 'working)))
+    (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'done)
+                                       (switchboard-test--agent "b" 'failed)))
+    (should (equal (switchboard--lamp-counts) '(0 1 1)))
+    (switchboard--menu-acknowledge-all)
+    (should (equal (switchboard--lamp-counts) '(0 0 0)))))
+
 ;;;; Embark and session commands
 
 (ert-deftest switchboard-embark-map-bindings ()

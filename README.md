@@ -154,6 +154,7 @@ Optional pieces:
 | `switchboard-stop` | `s` | `claude stop` |
 | `switchboard-respawn` | `r` | `claude respawn` |
 | `switchboard-remove` | `k` | `claude rm`, after confirmation |
+| `switchboard-menu` | `?` | A transient menu of the keys above, headed by the session at point and its state; `U` there acknowledges every session |
 | `switchboard-consult` | | Pick a session with consult, previewed, and open it (`C-u`: all sessions) |
 | `switchboard-dispatch-here` | | `claude --bg` in the session's own directory |
 | `switchboard-dired` | | Dired in the session's directory |
@@ -237,8 +238,13 @@ example:
     "s" #'switchboard-stop
     "r" #'switchboard-respawn
     "x" #'switchboard-remove
+    "?" #'switchboard-menu
     "q" #'quit-window))
 ```
+
+Inside the menu the keys are the list's own (`k` removes, `g` refreshes)
+whatever you bind for normal state, since a transient menu's keymap takes
+precedence over Evil's.
 
 The transcript buffer is a `markdown-mode` buffer, so Evil's normal state
 applies there too; bind `switchboard-transcript-mode-map`'s `g`, `+` and `q`

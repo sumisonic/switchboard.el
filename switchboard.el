@@ -112,6 +112,11 @@
 (autoload 'switchboard-consult-read-agent "switchboard-consult"
   "Read a session with `consult--multi', prompting with PROMPT.
 ALL non-nil offers every session.")
+;; The transient menu of the list lives in switchboard-menu.el, so
+;; that transient is loaded when the menu is first opened, not with
+;; this file.
+(autoload 'switchboard-menu "switchboard-menu"
+  "Show the commands of the Switchboard list in a transient menu." t)
 (defvar embark-keymap-alist)
 (defvar embark-target-finders)
 (declare-function json-encode "json" (object))
@@ -929,7 +934,8 @@ and at most one queued behind it, still completes."
   "d" #'switchboard-dispatch
   "s" #'switchboard-stop
   "r" #'switchboard-respawn
-  "k" #'switchboard-remove)
+  "k" #'switchboard-remove
+  "?" #'switchboard-menu)
 
 (define-derived-mode switchboard-mode tabulated-list-mode "Switchboard"
   "Major mode listing Claude Code background sessions.
@@ -940,7 +946,8 @@ acknowledges a finished session, \\[switchboard-toggle-show-all]
 shows sessions hidden by `switchboard-done-retention',
 \\[switchboard-refresh] refreshes.  \\[switchboard-dispatch] starts a
 new session; \\[switchboard-stop], \\[switchboard-respawn] and
-\\[switchboard-remove] act on the one at point."
+\\[switchboard-remove] act on the one at point.  \\[switchboard-menu]
+shows these commands in a menu, headed by the session at point."
   (setq tabulated-list-format
         [("" 2 nil)
          ("State" 8 nil)

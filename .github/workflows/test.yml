@@ -28,7 +28,7 @@ jobs:
         run: |
           emacs -Q --batch -L . \
             --eval '(setq byte-compile-error-on-warn t)' \
-            -f batch-byte-compile switchboard.el switchboard-consult.el
+            -f batch-byte-compile switchboard.el switchboard-consult.el switchboard-menu.el
 
       - name: checkdoc (must be clean)
         run: emacs -Q --batch -l test/checkdoc-batch.el
@@ -41,7 +41,7 @@ jobs:
           emacs -Q --batch \
             --eval "(progn (require 'package) (package-initialize))" \
             -l package-lint --eval '(setq package-lint-main-file "switchboard.el")' \
-            -f package-lint-batch-and-exit switchboard-consult.el
+            -f package-lint-batch-and-exit switchboard-consult.el switchboard-menu.el
 
       - name: Run ERT (without optional packages)
         run: |
@@ -59,7 +59,7 @@ jobs:
           emacs -Q --batch \
             --eval "(progn (require 'package) (package-initialize))" \
             --eval '(setq byte-compile-error-on-warn t)' \
-            -L . -f batch-byte-compile switchboard.el switchboard-consult.el
+            -L . -f batch-byte-compile switchboard.el switchboard-consult.el switchboard-menu.el
 
       - name: Run ERT (with eat, consult and embark)
         run: |
