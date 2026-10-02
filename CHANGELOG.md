@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `switchboard-acknowledge-on-attach` (default `nil`): when non-nil,
+  `switchboard-attach` turns off the attached session's done/failed lamp
+  once `switchboard-attach-function` has returned normally. It applies to
+  every way of attaching (the list, the consult picker, Embark); an error
+  while attaching leaves the lamp on, and transcripts and previews never
+  acknowledge.
+
 ## [0.1.0] - 2026-09-17
 
 ### Added
