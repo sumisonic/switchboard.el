@@ -13,6 +13,14 @@ All notable changes to this project are documented here. The format follows
   every way of attaching (the list, the consult picker, Embark); an error
   while attaching leaves the lamp on, and transcripts and previews never
   acknowledge.
+- `switchboard-menu`, bound to `?` in the list: a transient menu of the
+  list's commands under the same keys, headed by the name and state of the
+  session at point, with `U` to acknowledge every session. Its session
+  commands act on the session the heading names, and refuse if a refresh
+  drops that session from the list while the menu is open (`C-u a` still
+  acknowledges every session, as in the list). It lives in
+  `switchboard-menu.el`, so transient is loaded only when the menu is first
+  opened. `?` used to run `describe-mode`, which stays on `h`.
 
 ## [0.1.0] - 2026-09-17
 

@@ -10,7 +10,7 @@
 
 (let ((checkdoc-diagnostic-buffer "*switchboard-checkdoc*")
       (checkdoc-autofix-flag 'never))
-  (dolist (file '("switchboard.el" "switchboard-consult.el"))
+  (dolist (file '("switchboard.el" "switchboard-consult.el" "switchboard-menu.el"))
     (with-current-buffer (find-file-noselect (expand-file-name file))
       (checkdoc-current-buffer t)))
   (with-current-buffer checkdoc-diagnostic-buffer
