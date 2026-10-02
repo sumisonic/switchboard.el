@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-02
+
 ### Added
 
 - `switchboard-acknowledge-on-attach` (default `nil`): when non-nil,

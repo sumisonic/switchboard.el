@@ -9,7 +9,7 @@ when a session needs you, has finished or has failed, and lets you plug in
 Switchboard is an unofficial project. It is not affiliated with or endorsed
 by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic, PBC.
 
-> **Status: 0.1.0, early.** Everything below works, is covered by tests and
+> **Status: 0.2.0, early.** Everything below works, is covered by tests and
 > was measured against Claude Code 2.1.274 to 2.1.278, but the package is
 > young and not on MELPA yet.
 

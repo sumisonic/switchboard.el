@@ -3,7 +3,7 @@
 ;; Copyright (C) 2026 sumisonic
 
 ;; Author: sumisonic
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: tools, processes, convenience
 ;; URL: https://github.com/sumisonic/switchboard.el
