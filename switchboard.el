@@ -178,6 +178,18 @@ Called with one argument, a `switchboard-agent'.  The default opens
 elsewhere, for example in an external terminal multiplexer."
   :type 'function)
 
+(defcustom switchboard-acknowledge-on-attach nil
+  "Non-nil means attaching to a session also acknowledges it.
+`switchboard-attach' then turns off the session's done or failed
+mark, as `switchboard-acknowledge' does, once
+`switchboard-attach-function' has returned normally; if that
+function signals an error, the mark stays.  Every way of attaching
+goes through `switchboard-attach': the list, the consult picker and
+Embark.  Showing a transcript or a consult preview never
+acknowledges.  The mark of a blocked session is not affected: it
+shows the state and stays while the session is blocked."
+  :type 'boolean)
+
 (defcustom switchboard-terminal-backend 'auto
   "Terminal used by `switchboard-attach-in-terminal'.
 `auto' picks the first of ghostel, vterm and eat that is installed.
@@ -1016,16 +1028,23 @@ new session; \\[switchboard-stop], \\[switchboard-respawn] and
                                  "showing all sessions"
                                "showing recent sessions")))
 
+(defun switchboard--acknowledge-id (id)
+  "Acknowledge the session whose short id is ID and update the display.
+Only that session's done or failed mark is turned off."
+  (remhash id switchboard--unacknowledged)
+  (switchboard--after-update))
+
 (defun switchboard-acknowledge (&optional all)
   "Acknowledge the finished session at point, turning its lamp off.
 With prefix argument ALL, or outside the list buffer, acknowledge every
-finished or failed session."
+finished or failed session.  See also `switchboard-acknowledge-on-attach'."
   (interactive "P")
   (if (or all (not (derived-mode-p 'switchboard-mode)))
-      (clrhash switchboard--unacknowledged)
-    (remhash (switchboard-agent-id (switchboard--agent-at-point))
-             switchboard--unacknowledged))
-  (switchboard--after-update))
+      (progn
+        (clrhash switchboard--unacknowledged)
+        (switchboard--after-update))
+    (switchboard--acknowledge-id
+     (switchboard-agent-id (switchboard--agent-at-point)))))
 
 ;;;; Transcript
 
@@ -1425,11 +1444,16 @@ recycled for something else is left alone.")
 (defun switchboard-attach (agent)
   "Attach to AGENT with `switchboard-attach-function'.
 The default attach function shows the buffer with
-`switchboard-display-buffer-function'.  In the list, AGENT is the
-session at point; elsewhere it is read with
-completion."
+`switchboard-display-buffer-function'.  With
+`switchboard-acknowledge-on-attach' non-nil, AGENT is acknowledged
+once the attach function has returned normally; an error leaves its
+mark on.  In the list, AGENT is the session at point; elsewhere it is
+read with completion."
   (interactive (list (switchboard--agent-at-point-or-read "Attach to session: ")))
-  (funcall switchboard-attach-function (switchboard--coerce-agent agent)))
+  (let ((agent (switchboard--coerce-agent agent)))
+    (prog1 (funcall switchboard-attach-function agent)
+      (when switchboard-acknowledge-on-attach
+        (switchboard--acknowledge-id (switchboard-agent-id agent))))))
 
 (defun switchboard--attach-buffer-name (agent)
   "Return a fresh name for the terminal buffer attached to AGENT.

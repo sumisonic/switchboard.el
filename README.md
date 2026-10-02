@@ -256,6 +256,7 @@ for normal state the same way if you want them.
 | `switchboard-state-change-functions` | `nil` | Abnormal hook `(AGENT OLD NEW)` |
 | `switchboard-echo-transitions` | `t` | Also `message` each notified transition |
 | `switchboard-attach-function` | `switchboard-attach-in-terminal` | What `RET` does |
+| `switchboard-acknowledge-on-attach` | `nil` | Attaching to a session (`RET`, the consult picker, Embark) also turns off its done/failed lamp, once the attach function has returned without an error |
 | `switchboard-terminal-backend` | `auto` | `auto` (the first of ghostel, vterm, eat that is installed), `ghostel`, `vterm`, `eat`, or a function `(NAME COMMAND)` returning a buffer |
 | `switchboard-kill-buffer-on-exit` | `t` | Close the terminal buffer when `claude attach` exits |
 | `switchboard-attach-hook` | `nil` | Run in each new attached buffer |

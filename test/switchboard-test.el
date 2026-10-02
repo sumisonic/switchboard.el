@@ -192,6 +192,42 @@ This is what lets a hook's session_id be mapped to a row."
                                        (switchboard-test--agent "b" 'working)))
     (should (equal (switchboard--lamp-counts) '(0 0 0)))))
 
+(defun switchboard-test--finish-two-sessions ()
+  "Take two snapshots that leave \"a\" done and \"b\" failed, unacknowledged."
+  (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'working)
+                                     (switchboard-test--agent "b" 'working)))
+  (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'done)
+                                     (switchboard-test--agent "b" 'failed))))
+
+(defun switchboard-test--list-mark (buffer id)
+  "Return the first column of session ID's row in the list BUFFER."
+  (with-current-buffer buffer
+    (save-excursion
+      (goto-char (point-min))
+      (while (and (not (eobp)) (not (equal (tabulated-list-get-id) id)))
+        (forward-line 1))
+      (substring-no-properties (aref (tabulated-list-get-entry) 0)))))
+
+(ert-deftest switchboard-acknowledge-at-point-acknowledges-that-session ()
+  "In the list, acknowledging turns off the mark of the session at point only."
+  (switchboard-test--with-clean-state
+    (switchboard-test--finish-two-sessions)
+    (let ((buffer (get-buffer-create switchboard-buffer-name)))
+      (unwind-protect
+          (with-current-buffer buffer
+            (switchboard-mode)
+            (tabulated-list-print)
+            (goto-char (point-min))
+            (while (and (not (eobp)) (not (equal (tabulated-list-get-id) "a")))
+              (forward-line 1))
+            (should (equal (tabulated-list-get-id) "a"))
+            (switchboard-acknowledge)
+            (should-not (gethash "a" switchboard--unacknowledged))
+            (should (eq (gethash "b" switchboard--unacknowledged) 'failed))
+            (should (equal (switchboard-test--list-mark buffer "a") ""))
+            (should (equal (switchboard-test--list-mark buffer "b") "✗")))
+        (kill-buffer buffer)))))
+
 (ert-deftest switchboard-removed-session-is-forgotten ()
   "A session that disappears loses its marks."
   (switchboard-test--with-clean-state
@@ -735,6 +771,64 @@ Working, live blocked or failed, recent and transitioned ones stay."
               (switchboard-transcript agent)
               (should (equal shown (list (get-buffer "*switchboard transcript: fixture*")))))
           (when-let* ((b (get-buffer "*switchboard transcript: fixture*"))) (kill-buffer b)))))))
+
+(ert-deftest switchboard-attach-keeps-the-mark-by-default ()
+  "With `switchboard-acknowledge-on-attach' nil, attaching leaves the mark on."
+  (switchboard-test--with-clean-state
+    (switchboard-test--finish-two-sessions)
+    (let* ((attached nil)
+           (switchboard-acknowledge-on-attach nil)
+           (switchboard-attach-function
+            (lambda (agent) (push (switchboard-agent-id agent) attached))))
+      (switchboard-attach "a")
+      (should (equal attached '("a")))
+      (should (eq (gethash "a" switchboard--unacknowledged) 'done))
+      (should (equal (switchboard--lamp-counts) '(0 1 1))))))
+
+(ert-deftest switchboard-attach-acknowledges-only-that-session ()
+  "With `switchboard-acknowledge-on-attach' t, attaching turns off that mark only.
+The mark goes once the attach function has returned, the list is
+redrawn without it, the function's value is passed through, and the
+next snapshot with the same states does not light it again."
+  (switchboard-test--with-clean-state
+    (switchboard-test--finish-two-sessions)
+    (let* ((marks-while-attaching nil)
+           (switchboard-acknowledge-on-attach t)
+           (switchboard-attach-function
+            (lambda (agent)
+              (push (gethash (switchboard-agent-id agent) switchboard--unacknowledged)
+                    marks-while-attaching)
+              'attached))
+           (buffer (get-buffer-create switchboard-buffer-name)))
+      (unwind-protect
+          (progn
+            (with-current-buffer buffer
+              (switchboard-mode)
+              (tabulated-list-print))
+            (should (equal (switchboard-test--list-mark buffer "a") "✓"))
+            (should (eq (switchboard-attach "a") 'attached))
+            (should (equal marks-while-attaching '(done)))
+            (should-not (gethash "a" switchboard--unacknowledged))
+            (should (eq (gethash "b" switchboard--unacknowledged) 'failed))
+            (should (equal (switchboard--lamp-counts) '(0 0 1)))
+            (should (equal (switchboard-test--list-mark buffer "a") ""))
+            (should (equal (switchboard-test--list-mark buffer "b") "✗"))
+            ;; The next poll sees the same states: no transition, no mark.
+            (switchboard--apply-snapshot (list (switchboard-test--agent "a" 'done)
+                                               (switchboard-test--agent "b" 'failed)))
+            (should-not (gethash "a" switchboard--unacknowledged))
+            (should (equal (switchboard--lamp-counts) '(0 0 1))))
+        (kill-buffer buffer)))))
+
+(ert-deftest switchboard-attach-error-keeps-the-mark ()
+  "An attach function that signals leaves the mark on, even with the option t."
+  (switchboard-test--with-clean-state
+    (switchboard-test--finish-two-sessions)
+    (let ((switchboard-acknowledge-on-attach t)
+          (switchboard-attach-function (lambda (_agent) (error "Attach failed"))))
+      (should-error (switchboard-attach "a"))
+      (should (eq (gethash "a" switchboard--unacknowledged) 'done))
+      (should (equal (switchboard--lamp-counts) '(0 1 1))))))
 
 (ert-deftest switchboard-auto-backend-order ()
   "auto resolves to ghostel, then vterm (with its module), then eat."
